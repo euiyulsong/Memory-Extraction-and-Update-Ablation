@@ -3,7 +3,7 @@ import unittest
 from collections import defaultdict
 from memory_benchmark import (chunks, bm25_rank, update, make_history, new_meter, sample_cases,
                               extract, build_locomo, build_longmemeval, bootstrap_ci_delta,
-                              rouge_n_f1, summarize, calculate_bert_scores)
+                              rouge_n_f1, rouge_l_f1, summarize, calculate_bert_scores)
 
 
 class StubLLM:
@@ -152,10 +152,12 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(rouge_n_f1('a b c d','a b c d',1),1.0)
         self.assertEqual(rouge_n_f1('a b c','a b x',2),0.5)
         self.assertEqual(rouge_n_f1('a b c','x y z',3),0.0)
+        self.assertEqual(rouge_l_f1('a b c d','a x c d'),.75)
+        self.assertEqual(rouge_l_f1('a b c','x y z'),0.)
 
     def test_summary_includes_rouge_metrics(self):
         row={'stage':'exp2','arm':'joint','dataset':'locomo','type':'2','correct':1,
-             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':.5,'rouge_3':0.,
+             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':.5,'rouge_3':0.,'rouge_l':.75,
              'memory_count':1,'calls':1,'input_tokens':0,'output_tokens':0,'latency_s':0.,
              'estimated_cost_usd':0.,'added':1,'deleted':0,'skipped':0,'invalid_indices':0,
              'evidence_origin_recall':None}
@@ -163,10 +165,11 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(summary['rouge_1'],1.)
         self.assertEqual(summary['rouge_2'],.5)
         self.assertEqual(summary['rouge_3'],0.)
+        self.assertEqual(summary['rouge_l'],.75)
 
     def test_summary_includes_bert_score_when_available(self):
         row={'stage':'exp2','arm':'joint','dataset':'locomo','type':'2','correct':1,
-             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':1.,'rouge_3':1.,'bert_score_f1':.75,
+             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':1.,'rouge_3':1.,'rouge_l':1.,'bert_score_f1':.75,
              'memory_count':1,'calls':1,'input_tokens':0,'output_tokens':0,'latency_s':0.,
              'estimated_cost_usd':0.,'added':1,'deleted':0,'skipped':0,'invalid_indices':0,
              'evidence_origin_recall':None}
@@ -200,6 +203,16 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(saved['rouge_1'],2/3)
             self.assertEqual(saved['rouge_2'],.5)
             self.assertEqual(saved['rouge_3'],0.)
+            self.assertEqual(saved['rouge_l'],2/3)
+
+    def test_bert_score_calc_updates_all_rows(self):
+        from unittest.mock import patch
+        import types
+        row={'prediction':'a','answer_gold':'a'}
+        fake=types.SimpleNamespace(score=lambda *args,**kwargs:(None,None,type('V',(),{'tolist':lambda self:[.88]})()))
+        with patch.dict('sys.modules',{'bert_score':fake}):
+            self.assertEqual(calculate_bert_scores([row]),[row])
+        self.assertEqual(row['bert_score_f1'],.88)
 
     def test_evaluate_resume_keeps_partial_rows(self):
         import json, tempfile

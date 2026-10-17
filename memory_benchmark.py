@@ -58,6 +58,22 @@ def rouge_n_f1(reference, prediction, n):
     return 2 * precision * recall / (precision + recall)
 
 
+def rouge_l_f1(reference, prediction):
+    """ROUGE-L F1 from the longest common subsequence of normalized tokens."""
+    ref=tokenize(reference); pred=tokenize(prediction)
+    if not ref or not pred: return 0.
+    previous=[0]*(len(pred)+1)
+    for token in ref:
+        current=[0]
+        for j, other in enumerate(pred,1):
+            current.append(previous[j-1]+1 if token==other else max(previous[j],current[-1]))
+        previous=current
+    overlap=previous[-1]
+    if not overlap: return 0.
+    precision=overlap/len(pred); recall=overlap/len(ref)
+    return 2*precision*recall/(precision+recall)
+
+
 def bm25_rank(query, mems, k=8):
     """Simple dependency-free BM25 for reproducible lexical memory search."""
     if not mems: return []
@@ -464,6 +480,7 @@ def answer(llm, case, mems, meter, topk):
     recall = overlap/len(gold_tokens) if gold_tokens else 0.
     f1 = 2*precision*recall/(precision+recall) if precision+recall else 0.
     rouge = {f'rouge_{n}':rouge_n_f1(case['answer'],pred,n) for n in (1,2,3)}
+    rouge['rouge_l']=rouge_l_f1(case['answer'],pred)
     evidence = set(case['evidence'])
     covered = evidence.intersection({sid for m in retrieval for sid in m.get('source_ids', [])})
     return {'prediction':pred, 'correct':bool(verdict['correct']),
@@ -485,7 +502,7 @@ def summarize(rows):
         x = {'stage':stage,'arm':arm,'dataset':dataset,'n':len(rr),
              'correct_rate':avg('correct'),'em':avg('em'),'token_f1':avg('f1'),
              'rouge_1':avg('rouge_1'),'rouge_2':avg('rouge_2'),
-             'rouge_3':avg('rouge_3'),
+             'rouge_3':avg('rouge_3'),'rouge_l':avg('rouge_l'),
              'mean_memory_count':avg('memory_count'),'mean_llm_calls':avg('calls'),
              'mean_input_tokens':avg('input_tokens'),'mean_output_tokens':avg('output_tokens'),
              'mean_model_latency_s':avg('latency_s'),'mean_estimated_cost_usd':avg('estimated_cost_usd'),
@@ -624,6 +641,7 @@ def main():
     if args.score_existing:
         exp2_file=Path(args.fresh_exp2_output).resolve() if args.fresh_exp2_output else out/'exp2_test.jsonl'
         paths=[out/'exp1_dev.jsonl',exp2_file]
+        path_rows=[]
         all_rows=[]
         for path in paths:
             rows=[json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
@@ -635,8 +653,14 @@ def main():
                 precision=overlap/len(pt) if pt else 0.; recall=overlap/len(gt) if gt else 0.
                 row['f1']=2*precision*recall/(precision+recall) if precision+recall else 0.
                 for n in (1,2,3): row[f'rouge_{n}']=rouge_n_f1(gold,pred,n)
+                row['rouge_l']=rouge_l_f1(gold,pred)
             all_rows.extend(rows)
-        if args.bert_score: calculate_bert_scores(all_rows,args.bert_score_model)
+            path_rows.append(rows)
+        if args.bert_score:
+            calculate_bert_scores(all_rows,args.bert_score_model)
+            cursor=0
+            for rows in path_rows:
+                n=len(rows); rows[:]=all_rows[cursor:cursor+n]; cursor+=n
         write_jsonl(paths[0],[r for r in all_rows if r.get('stage')=='exp1'])
         write_jsonl(paths[1],[r for r in all_rows if r.get('stage')=='exp2'])
         summary=summarize(all_rows)
