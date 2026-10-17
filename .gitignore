@@ -4,13 +4,20 @@ __pycache__/
 # Raw benchmark inputs and bulky cache/audit artifacts.
 data/*.json
 results/**/api_cache/
+!results/summary.csv
+!results/exp1_dev.jsonl
 results/**/history_audit/
 results/fact_count_cache/
 results/exp2_live_smoke/
 !results/exp2_progress.md
 results/exp2_live_smoke/
 results/**/exp2_test.jsonl
+results/exp2_test.jsonl
+!results/exp2_test.jsonl
 results/**/exp2_200_run/exp2_test.jsonl
+results/**/exp2_test.manifest.json
+results/exp2_test.jsonl
+!results/exp2_test.jsonl
 results/**/exp2_200_run/exp2_200_clean.jsonl
 results/**/exp2_200_run/exp2_200_clean.manifest.json
 results/**/exp2_exploratory.manifest.json

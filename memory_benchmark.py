@@ -46,6 +46,18 @@ def normalize(s):
     return ' '.join(tokenize(s))
 
 
+def rouge_n_f1(reference, prediction, n):
+    """ROUGE-n F1 using normalized whitespace-token n-grams."""
+    ref = tokenize(reference); pred = tokenize(prediction)
+    ref_ngrams = collections.Counter(tuple(ref[i:i+n]) for i in range(max(0, len(ref)-n+1)))
+    pred_ngrams = collections.Counter(tuple(pred[i:i+n]) for i in range(max(0, len(pred)-n+1)))
+    overlap = sum((ref_ngrams & pred_ngrams).values())
+    ref_count = sum(ref_ngrams.values()); pred_count = sum(pred_ngrams.values())
+    if not overlap or not ref_count or not pred_count: return 0.
+    precision = overlap / pred_count; recall = overlap / ref_count
+    return 2 * precision * recall / (precision + recall)
+
+
 def bm25_rank(query, mems, k=8):
     """Simple dependency-free BM25 for reproducible lexical memory search."""
     if not mems: return []
@@ -451,10 +463,11 @@ def answer(llm, case, mems, meter, topk):
     precision = overlap/len(pred_tokens) if pred_tokens else 0.
     recall = overlap/len(gold_tokens) if gold_tokens else 0.
     f1 = 2*precision*recall/(precision+recall) if precision+recall else 0.
+    rouge = {f'rouge_{n}':rouge_n_f1(case['answer'],pred,n) for n in (1,2,3)}
     evidence = set(case['evidence'])
     covered = evidence.intersection({sid for m in retrieval for sid in m.get('source_ids', [])})
     return {'prediction':pred, 'correct':bool(verdict['correct']),
-            'em':int(normalize(case['answer'])==normalize(pred)), 'f1':f1,
+            'em':int(normalize(case['answer'])==normalize(pred)), 'f1':f1, **rouge,
             'evidence_origin_recall': (len(covered)/len(evidence) if evidence else None),
             'retrieved_ids': [m['id'] for m in retrieval]}
 
@@ -471,6 +484,8 @@ def summarize(rows):
         def avg(key): return round(statistics.mean([float(x[key]) for x in rr]), 5)
         x = {'stage':stage,'arm':arm,'dataset':dataset,'n':len(rr),
              'correct_rate':avg('correct'),'em':avg('em'),'token_f1':avg('f1'),
+             'rouge_1':avg('rouge_1'),'rouge_2':avg('rouge_2'),
+             'rouge_3':avg('rouge_3'),
              'mean_memory_count':avg('memory_count'),'mean_llm_calls':avg('calls'),
              'mean_input_tokens':avg('input_tokens'),'mean_output_tokens':avg('output_tokens'),
              'mean_model_latency_s':avg('latency_s'),'mean_estimated_cost_usd':avg('estimated_cost_usd'),
@@ -479,8 +494,31 @@ def summarize(rows):
              'invalid_indices':sum(int(v['invalid_indices']) for v in rr)}
         origin = [r['evidence_origin_recall'] for r in rr if r['evidence_origin_recall'] is not None]
         x['evidence_origin_recall'] = round(statistics.mean(origin),5) if origin else None
+        if all('bert_score_f1' in r for r in rr):
+            x['bert_score_f1'] = avg('bert_score_f1')
         out.append(x)
     return out
+
+
+def write_jsonl(path, rows):
+    with open(path, 'w', encoding='utf-8') as f:
+        for row in rows: f.write(jdump(row) + '\n')
+
+
+def calculate_bert_scores(rows, model='roberta-large'):
+    """Populate row-level BERTScore fields, reusing already calculated values."""
+    pending = [r for r in rows if 'bert_score_f1' not in r]
+    if pending:
+        try:
+            from bert_score import score
+        except ImportError as exc:
+            raise RuntimeError('BERTScore requires the optional dependency: pip install bert-score') from exc
+        predictions = [str(r.get('prediction','')) for r in pending]
+        references = [str(r.get('answer_gold','')) for r in pending]
+        _, _, values = score(predictions, references, model_type=model, lang='en',
+                             verbose=False, rescale_with_baseline=True)
+        for row, value in zip(pending, values.tolist()): row['bert_score_f1'] = float(value)
+    return rows
 
 
 def write_csv(path, records):
@@ -576,9 +614,35 @@ def main():
     p.add_argument('--output-price',type=float,default=0.50,help='USD / 1M output tokens, standard short context')
     p.add_argument('--cached-input-price',type=float,default=0.01,help='USD / 1M cached input tokens')
     p.add_argument('--offline',action='store_true',help='Only cached model calls; never access API')
+    p.add_argument('--bert-score',action='store_true',help='Compute BERTScore F1 with optional bert-score dependency')
+    p.add_argument('--score-existing',action='store_true',
+                   help='Recompute text metrics for saved exp1/exp2 predictions without model API calls')
+    p.add_argument('--bert-score-model',default='roberta-large',help='Model used for BERTScore')
     args = p.parse_args()
     data_dir = Path(args.data_dir); data_dir.mkdir(parents=True,exist_ok=True)
     out = Path(args.output_dir); out.mkdir(parents=True,exist_ok=True)
+    if args.score_existing:
+        exp2_file=Path(args.fresh_exp2_output).resolve() if args.fresh_exp2_output else out/'exp2_test.jsonl'
+        paths=[out/'exp1_dev.jsonl',exp2_file]
+        all_rows=[]
+        for path in paths:
+            rows=[json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+            for row in rows:
+                pred=str(row.get('prediction','')); gold=str(row.get('answer_gold',''))
+                row['em']=int(normalize(gold)==normalize(pred))
+                gt,pt=tokenize(gold),tokenize(pred)
+                overlap=sum((collections.Counter(gt)&collections.Counter(pt)).values())
+                precision=overlap/len(pt) if pt else 0.; recall=overlap/len(gt) if gt else 0.
+                row['f1']=2*precision*recall/(precision+recall) if precision+recall else 0.
+                for n in (1,2,3): row[f'rouge_{n}']=rouge_n_f1(gold,pred,n)
+            all_rows.extend(rows)
+        if args.bert_score: calculate_bert_scores(all_rows,args.bert_score_model)
+        write_jsonl(paths[0],[r for r in all_rows if r.get('stage')=='exp1'])
+        write_jsonl(paths[1],[r for r in all_rows if r.get('stage')=='exp2'])
+        summary=summarize(all_rows)
+        write_csv(out/'summary.csv',summary)
+        print(f'Rescored saved predictions; rows={len(all_rows)}; summary={out/"summary.csv"}')
+        return
     exp2_out = Path(args.exp2_outdir) if args.exp2_outdir else out
     if not exp2_out.is_absolute(): exp2_out = (Path.cwd()/exp2_out).resolve()
     exp2_out.mkdir(parents=True,exist_ok=True)
@@ -647,6 +711,21 @@ def main():
     arms = [('joint',win_batch,'joint'),('sequential',win_batch,'sequential'),
             ('delete_only',win_batch,'delete_only'),('add_only',win_batch,'add_only')]
     two_rows = evaluate(llm,test,'exp2',arms,state_cache,args.topk,args.update_topk,exp2_path)
+    if exp2_path.exists():
+        two_rows = []
+        for line in exp2_path.read_text(encoding='utf-8').splitlines():
+            if not line.strip(): continue
+            row=json.loads(line)
+            if row.get('stage') == 'exp2': two_rows.append(row)
+    if args.bert_score:
+        calculate_bert_scores(one_rows + two_rows, args.bert_score_model)
+        write_jsonl(out/'exp1_dev.jsonl', one_rows)
+        write_jsonl(exp2_path, two_rows)
+    elif exp2_path.exists():
+        write_jsonl(exp2_path, two_rows)
+    if exp2_out == out:
+        write_jsonl(out/'exp1_dev.jsonl', one_rows)
+        if exp2_path.exists(): write_jsonl(exp2_path, two_rows)
     agg = summarize(one_rows+two_rows)
     if exp2_out == out: write_csv(out/'summary.csv', agg)
     report = {'winner_exp1_on_dev':best, 'batch_used_exp2':win_batch,

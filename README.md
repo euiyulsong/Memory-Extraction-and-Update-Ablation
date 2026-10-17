@@ -54,6 +54,10 @@ python memory_benchmark.py --model gpt-6-luna \
 
 데이터는 필요 시 자동 다운로드됩니다. API 응답 캐시는 `results/api_cache/`에 남아 이어서 실행할 수 있습니다. 공개한 부분 결과를 원본 입력과 대조하려면 해당 저장소의 `manifest.json` 샘플 ID가 기준입니다. API 키 없이 합성 데이터 스모크 테스트를 하려면 원 프로젝트의 `test_smoke.py`를 함께 사용하세요.
 
+QA prediction 지표: normalized exact match (EM), unigram token F1, ROUGE-1/2/3 F1 (normalized whitespace-token n-gram overlap), 그리고 옵션인 BERTScore F1. BERTScore 설치/실행: `pip install bert-score`, 이후 명령에 `--bert-score` 추가 (기본 model `roberta-large`, baseline-rescaled). JSONL row와 summary CSV에 지표가 기록됩니다. ROUGE와 BERTScore는 gold/prediction 간 표면·의미 유사도 지표이며 GPT judge `correct_rate`를 대체하지 않습니다.
+
+이미 저장된 prediction을 API 재호출 없이 다시 점수화하려면 `python memory_benchmark.py --score-existing --output-dir results`를 실행하세요. BERTScore도 계산하려면 먼저 `pip install bert-score` 후 `--score-existing --bert-score`를 지정합니다.
+
 ### 산출물
 
 - `results/manifest.json`: 샘플/분할 manifest
@@ -65,14 +69,16 @@ python memory_benchmark.py --model gpt-6-luna \
 
 ## Exp 2 진행 결과
 
-held-out 80개 중 현재 **완료 12개 사례**(LoCoMo 10, LongMemEval 2; 네 arm 모두 각 12행)입니다. GPT judge 기준 네 arm 모두 5/12 (41.7%) 정답으로 동일합니다. 단, 이는 작은 중간 진행분이며 LoCoMo 사례도 두 대화 그룹에만 있어 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 원시 JSONL은 80개가 완료된 뒤 추가합니다.
+held-out 80개 중 현재 **완료 13개 사례**(LoCoMo 10, LongMemEval 3; 네 arm 모두 각 13행)입니다. GPT judge 기준 네 arm 모두 6/13 (46.2%) 정답으로 같습니다. 이는 작은 중간 진행분이며 LoCoMo 사례도 두 대화 그룹에만 있어 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 원시 JSONL은 80개가 완료된 뒤 추가합니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
 |---|---:|---:|---:|
-| joint | 5/12 | 0.0690 | 717.0 |
-| sequential | 5/12 | 0.0938 | 908.3 |
-| delete_only | 5/12 | 0.0635 | 717.0 |
-| add_only | 5/12 | 0.0257 | 334.3 |
+| joint | 6/13 | 0.0690 | 717.0 |
+| sequential | 6/13 | 0.0938 | 908.3 |
+| delete_only | 6/13 | 0.0635 | 717.0 |
+| add_only | 6/13 | 0.0257 | 334.3 |
+
+13개 사례의 text metrics는 진행표에 기재했습니다. 저장된 답변은 `--score-existing`로 API 호출 없이 다시 점수화할 수 있습니다. BERTScore는 `bert-score` 패키지가 없어 아직 산출하지 않았습니다.
 
 평균 비용은 코드의 모델 단가 추정값이며 실제 청구액과 다를 수 있습니다. 기존 Exp2 결과 JSONL과 탐색용 200개 파일은 코드/캐시와 구분해 아직 Git에 포함하지 않았습니다.
 

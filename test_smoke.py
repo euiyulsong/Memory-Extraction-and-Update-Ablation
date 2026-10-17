@@ -2,7 +2,8 @@
 import unittest
 from collections import defaultdict
 from memory_benchmark import (chunks, bm25_rank, update, make_history, new_meter, sample_cases,
-                              extract, build_locomo, build_longmemeval, bootstrap_ci_delta)
+                              extract, build_locomo, build_longmemeval, bootstrap_ci_delta,
+                              rouge_n_f1, summarize, calculate_bert_scores)
 
 
 class StubLLM:
@@ -146,6 +147,59 @@ class BenchmarkTests(unittest.TestCase):
         batch=cases[start:start+n]
         self.assertEqual(len(batch),1)
         self.assertEqual(batch[0]['id'],'10')
+
+    def test_rouge_ngram_metrics(self):
+        self.assertEqual(rouge_n_f1('a b c d','a b c d',1),1.0)
+        self.assertEqual(rouge_n_f1('a b c','a b x',2),0.5)
+        self.assertEqual(rouge_n_f1('a b c','x y z',3),0.0)
+
+    def test_summary_includes_rouge_metrics(self):
+        row={'stage':'exp2','arm':'joint','dataset':'locomo','type':'2','correct':1,
+             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':.5,'rouge_3':0.,
+             'memory_count':1,'calls':1,'input_tokens':0,'output_tokens':0,'latency_s':0.,
+             'estimated_cost_usd':0.,'added':1,'deleted':0,'skipped':0,'invalid_indices':0,
+             'evidence_origin_recall':None}
+        summary=summarize([row])[0]
+        self.assertEqual(summary['rouge_1'],1.)
+        self.assertEqual(summary['rouge_2'],.5)
+        self.assertEqual(summary['rouge_3'],0.)
+
+    def test_summary_includes_bert_score_when_available(self):
+        row={'stage':'exp2','arm':'joint','dataset':'locomo','type':'2','correct':1,
+             'em':1,'f1':1.,'rouge_1':1.,'rouge_2':1.,'rouge_3':1.,'bert_score_f1':.75,
+             'memory_count':1,'calls':1,'input_tokens':0,'output_tokens':0,'latency_s':0.,
+             'estimated_cost_usd':0.,'added':1,'deleted':0,'skipped':0,'invalid_indices':0,
+             'evidence_origin_recall':None}
+        summary=summarize([row])[0]
+        self.assertEqual(summary['bert_score_f1'],.75)
+
+    def test_bert_score_missing_dependency_is_clear(self):
+        from unittest.mock import patch
+        import sys
+        row={'prediction':'x','answer_gold':'x'}
+        with patch.dict(sys.modules, {'bert_score':None}):
+            with self.assertRaisesRegex(RuntimeError,'pip install bert-score'):
+                calculate_bert_scores([row])
+
+    def test_score_existing_mode_writes_text_metrics_without_api(self):
+        import tempfile, json, subprocess, sys
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            row={'stage':'exp2','arm':'joint','dataset':'locomo','type':'2','case_id':'x',
+                 'history_group':'g','answer_gold':'a b c','prediction':'a b x','correct':False,
+                 'memory_count':1,'calls':1,'input_tokens':0,'output_tokens':0,'latency_s':0,
+                 'estimated_cost_usd':0,'added':1,'deleted':0,'skipped':0,'invalid_indices':0,
+                 'evidence_origin_recall':None}
+            (root/'exp1_dev.jsonl').write_text('')
+            (root/'exp2_test.jsonl').write_text(json.dumps(row)+'\n')
+            result=subprocess.run([sys.executable,'memory_benchmark.py','--score-existing',
+                                   '--output-dir',str(root)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            saved=json.loads((root/'exp2_test.jsonl').read_text())
+            self.assertEqual(saved['rouge_1'],2/3)
+            self.assertEqual(saved['rouge_2'],.5)
+            self.assertEqual(saved['rouge_3'],0.)
 
     def test_evaluate_resume_keeps_partial_rows(self):
         import json, tempfile
