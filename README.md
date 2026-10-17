@@ -71,6 +71,19 @@ BERTScore는 `roberta-large`, English, baseline-rescaled F1 설정으로 산출�
 
 ## Exp 2 진행 결과
 
+### 네 가지 update arm의 의미
+
+모든 arm은 같은 순서의 대화 이력에서 동일한 추출 프롬프트로 `fresh` facts를 얻고, 같은 BM25 검색을 사용합니다. 차이는 새 사실을 메모리에 반영하는 정책입니다.
+
+| Arm | 동작 |
+|---|---|
+| `joint` | 관련된 기존 메모리를 검색한 뒤 한 번의 모델 호출에서 새 facts 중 중복/unsupported 항목을 skip하고, 모순되거나 supersede된 기존 메모리를 delete하도록 함께 결정합니다. |
+| `sequential` | 먼저 모델 호출로 새 facts의 skip 여부를 정하고, 남은 새 facts만 보고 별도 모델 호출로 기존 메모리의 delete 여부를 정합니다. |
+| `delete_only` | 기존 메모리의 delete 여부만 판단합니다. 추출된 새 facts는 모두 추가합니다(저장소 exact-text 중복 제외). |
+| `add_only` | semantic skip이나 기존 메모리 delete를 하지 않습니다. 새 facts를 추가하며 exact-text 중복만 저장소에서 제거합니다. |
+
+`joint`/`sequential`/`delete_only`는 update 시 query rewrite 및 기존 메모리 retrieval도 하므로, `add_only`보다 모델 호출과 비용이 큽니다. Delete는 기존 메모리를 직접 수정하지 않고 inactive/tombstone 처리하는 방식입니다.
+
 held-out 80개 중 현재 **완료 30개 사례**(LoCoMo 15, LongMemEval 15; 네 arm 모두 각 30행)입니다. GPT judge 정답은 joint 18/35, 나머지 arm 각 17/35입니다. 별도 exploratory smoke는 benchmark 결과에서 제외했습니다. 작은 중간 진행분이므로 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
