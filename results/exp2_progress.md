@@ -2,6 +2,8 @@
 
 **범위:** seed 42의 사전 고정 held-out 80개 가운데 14개 사례(56 arm rows)가 모두 완료됐습니다. LoCoMo 10개와 LongMemEval 4개이며, 아직 전체 benchmark가 아닌 중간 진행상황입니다. 원시 JSONL에는 14개 완료 사례만 반영했습니다.
 
+별도 exploratory smoke run도 1개 QA × 4 arm으로 성공했고 (`results/exp2_live_smoke/exp2_smoke.jsonl`, 로컬 전용), 그 1개는 원래 80개 held-out 결과와 분리되어 있습니다. 따라서 총 실제로 평가를 마친 distinct QA는 dev 20 + 정식 Exp2 14 + 분리 smoke 1 = **35개**이며, 정식 100-case benchmark 기준 진행 수는 여전히 34/100입니다.
+
 | Arm | Judge correct | Accuracy | Mean estimated USD/case | Mean logical LLM calls |
 |---|---:|---:|---:|---:|
 | joint | 7/14 | 0.500 | 0.0644 | 667.7 |

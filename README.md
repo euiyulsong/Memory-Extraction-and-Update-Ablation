@@ -71,7 +71,7 @@ BERTScore는 `roberta-large`, English, baseline-rescaled F1 설정으로 산출�
 
 ## Exp 2 진행 결과
 
-held-out 80개 중 현재 **완료 14개 사례**(LoCoMo 10, LongMemEval 4; 네 arm 모두 각 14행)입니다. GPT judge 기준 네 arm 모두 7/14 (50.0%) 정답으로 같습니다. 이는 작은 중간 진행분이며 LoCoMo 사례도 두 대화 그룹에만 있어 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다.
+held-out 80개 중 현재 **완료 14개 사례**(LoCoMo 10, LongMemEval 4; 네 arm 모두 각 14행)입니다. GPT judge 기준 네 arm 모두 7/14 (50.0%) 정답으로 같습니다. 별도 1-case exploratory smoke도 실행됐지만 benchmark 결과에서는 분리해 둡니다. 작은 중간 진행분이므로 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
 |---|---:|---:|---:|
