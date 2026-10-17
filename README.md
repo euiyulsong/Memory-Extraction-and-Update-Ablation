@@ -63,6 +63,19 @@ python memory_benchmark.py --model gpt-6-luna \
 
 원본 실행 디렉터리의 API cache 및 전체 history audit 로그는 크기와 불필요한 중간 세부정보 때문에 이 저장소에 포함하지 않았습니다.
 
+## Exp 2 진행 결과
+
+held-out 80개 중 현재 **완료 10개 사례**(LoCoMo 10/10, 각 arm 결과 10개; LongMemEval은 아직 없음)입니다. 추가로 11번째 사례의 `joint` row 하나가 기록됐지만 해당 사례의 나머지 arm 결과는 없습니다. 공정한 paired 비교를 위해 이 불완전 사례를 제외하면 네 arm 모두 동일 정답 5/10 (50%)입니다. 이 작은 진행분은 LoCoMo 대화 두 개에만 걸쳐 있어 정책 우열로 해석하면 안 됩니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 전체 JSONL은 80개가 완료된 뒤 추가합니다.
+
+| Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
+|---|---:|---:|---:|
+| joint | 5/10 paired | 0.0817 | 850.0 |
+| sequential | 5/10 | 0.1112 | 1,077.0 |
+| delete_only | 5/10 | 0.0751 | 850.0 |
+| add_only | 5/10 | 0.0303 | 396.0 |
+
+평균 비용은 코드의 모델 단가 추정값이며 실제 청구액과 다를 수 있습니다. 기존 Exp2 결과 JSONL과 탐색용 200개 파일은 코드/캐시와 구분해 아직 Git에 포함하지 않았습니다.
+
 ## exp2 중단 진단 및 수정
 
 확장 실험 manifest는 200개 사례를 요청했지만 JSONL에는 10개 사례(40 arm rows)만 완료되어 있었고 모두 LoCoMo였습니다. 대화 이력을 QA마다 cold-start로 다시 처리하기 때문에 사례당 arm별 수백~천 회의 모델 호출이 필요할 수 있습니다. 로그가 없어 수동 종료/런타임 종료/API 실패 등 직접 원인은 단정할 수 없습니다. 완료된 행은 모두 네 arm을 갖고 `invalid_indices=0`이라, 현재 증거는 프롬프트 오류보다 실행 시간/규모 문제를 더 시사합니다.

@@ -7,6 +7,7 @@ results/**/api_cache/
 results/**/history_audit/
 results/fact_count_cache/
 results/exp2_live_smoke/
+!results/exp2_progress.md
 results/exp2_live_smoke/
 results/**/exp2_test.jsonl
 results/**/exp2_200_run/exp2_test.jsonl
