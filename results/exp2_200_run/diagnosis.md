@@ -8,4 +8,4 @@
 
 테스트: `python3 -m unittest -v test_smoke.py` (9개 통과).
 
-실제 실험 결과는 아직 재실행하지 않았으므로 이 진단에는 기존 부분 JSONL을 포함하지 않았습니다.
+실제 1-case API smoke 시도는 실행 제한을 두 번 초과했고 JSONL score row를 남기지 못했습니다. 응답 캐시 124개는 `results/exp2_live_smoke/`에 남아 재개 가능하지만 공개하지 않았습니다. 기존 부분 JSONL을 결과로 혼합하지 않았습니다.

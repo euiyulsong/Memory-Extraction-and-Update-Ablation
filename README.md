@@ -63,13 +63,19 @@ python memory_benchmark.py --model gpt-6-luna \
 
 원본 실행 디렉터리의 API cache 및 전체 history audit 로그는 크기와 불필요한 중간 세부정보 때문에 이 저장소에 포함하지 않았습니다.
 
-## 다음 단계
-
 ## exp2 중단 진단 및 수정
 
 확장 실험 manifest는 200개 사례를 요청했지만 JSONL에는 10개 사례(40 arm rows)만 완료되어 있었고 모두 LoCoMo였습니다. 대화 이력을 QA마다 cold-start로 다시 처리하기 때문에 사례당 arm별 수백~천 회의 모델 호출이 필요할 수 있습니다. 로그가 없어 수동 종료/런타임 종료/API 실패 등 직접 원인은 단정할 수 없습니다. 완료된 행은 모두 네 arm을 갖고 `invalid_indices=0`이라, 현재 증거는 프롬프트 오류보다 실행 시간/규모 문제를 더 시사합니다.
 
-resume 시 완료 arm을 유지하고 미완료 arm만 돌도록 수정했습니다. `--exp2-order interleave`로 두 데이터셋 결과가 장시간 실행 초기에 모두 생기게 했습니다. 상세 기록은 [`results/exp2_200_run/diagnosis.md`](results/exp2_200_run/diagnosis.md) 참조. 실제 exp2 재실행 결과는 아직 없습니다. 소규모 API 실험은 별도 경로에서 확인 중이며, 전체 결과가 완성되기 전에는 기존 부분 파일과 섞지 않습니다.
+resume 시 완료 arm을 유지하고 미완료 arm만 돌도록 수정했습니다. `--exp2-order interleave`로 두 데이터셋 결과가 장시간 실행 초기에 모두 생기게 했습니다. 상세 기록은 [`results/exp2_200_run/diagnosis.md`](results/exp2_200_run/diagnosis.md) 참조. 실 API 소규모 시도는 실행 제한에 걸려 score row를 만들지 못했으며 결과로 취급하지 않았습니다. API 응답 캐시는 `results/exp2_live_smoke/`에 남아 있어 아래 명령으로 재개할 수 있습니다. 캐시/부분 산출물은 ignore되어 저장소에 포함되지 않습니다.
+
+```bash
+python3 memory_benchmark.py --model gpt-6-luna --exp2-only --exp2-n 1 \\
+  --exp2-order interleave --exp2-outdir results/exp2_live_smoke \\
+  --fresh-exp2-output results/exp2_live_smoke/exp2_smoke.jsonl
+```
+
+## 다음 단계
 
 ## 다음 단계
 
