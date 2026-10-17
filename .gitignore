@@ -1,5 +1,28 @@
 __pycache__/
 *.py[cod]
+
+# Raw benchmark inputs and bulky cache/audit artifacts.
+data/*.json
+results/**/api_cache/
+results/**/history_audit/
+results/fact_count_cache/
+results/**/exp2_test.jsonl
+results/**/exp2_200_run/exp2_test.jsonl
+results/**/exp2_200_run/exp2_200_clean.jsonl
+results/**/exp2_200_run/exp2_200_clean.manifest.json
+results/**/exp2_exploratory.manifest.json
+results/**/exp2_200_run/diagnosis.json
+!results/**/exp2_200_run/diagnosis.md
+exp2_200_clean.jsonl
+exp2_200_clean.manifest.json
 .env
 results/api_cache/
 data/
+
+# Keep cached responses, histories, and raw corpora out of public commits.
+results/**/api_cache/
+results/**/history_audit/
+results/fact_count_cache/
+data/*.json
+__pycache__/
+*.py[cod]

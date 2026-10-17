@@ -221,7 +221,11 @@ class LLM:
                     self.actual_api_calls += 1
                     break
                 except Exception:
-                    if attempt == 3: raise
+                    if attempt == 3:
+                        raise RuntimeError(
+                            f'API request failed after {attempt + 1} attempts '
+                            f'(label={label}, cache_key={key})'
+                        ) from None
                     time.sleep(delay); delay *= 2
         # All arms account for their own *logical* usage (even if common inputs are physically cached).
         meter['calls'] += 1
@@ -233,7 +237,8 @@ class LLM:
 
 
 def new_meter():
-    return {'calls': 0, 'input_tokens': 0, 'output_tokens': 0, 'cached_input_tokens': 0, 'latency_s': 0.}
+    return {'calls': 0, 'cache_hits': 0, 'cache_misses': 0,
+            'input_tokens': 0, 'output_tokens': 0, 'cached_input_tokens': 0, 'latency_s': 0.}
 
 
 def render_chunk(chunk):
@@ -339,6 +344,18 @@ def update(llm, policy, mems, fresh, chunk, meter, topk=12):
                       'skip_new_indices':sorted(skip),'delete_old_indices':sorted(delete)}}
 
 
+def apply_add_only(mems, fresh, chunk):
+    exact = {normalize(m['text']) for m in mems}
+    before = len(mems)
+    for i, fact in enumerate(fresh):
+        if normalize(fact['text']) in exact: continue
+        mems.append({'id':sha([chunk[-1]['id'],i,fact['text']])[:16],
+                     'text':fact['text'],'source_ids':fact.get('source_ids',[]),
+                     'date':fact['date'],'seq':max([m['seq'] for m in mems],default=0)+1})
+        exact.add(normalize(fact['text']))
+    return {'added':len(mems)-before,'deleted':0,'skipped':0,'invalid_indices':0}
+
+
 def make_history(llm, case, batch, policy, meter, cache, topk):
     key = (sha(case['turns']), batch, policy)
     if key in cache:
@@ -349,19 +366,65 @@ def make_history(llm, case, batch, policy, meter, cache, topk):
     before = meter.copy()
     mems, op = [], collections.Counter()
     events = []
-    for ch in chunks(case['turns'], batch):
-        new = extract(llm, ch, meter)
-        changes = update(llm, policy, mems, new, ch, meter, topk)
-        events.append({'chunk_turn_ids':[t['id'] for t in ch],
-                       'date':ch[-1]['date'], 'decision':changes.pop('trace')})
-        op.update(changes)
-    if getattr(llm,'path',None) is not None:
-        audit_dir = llm.path.parent / 'history_audit'
+    checkpoint_path = None
+    checkpoint_events = []
+    if case.get('dataset') == 'locomo' and getattr(llm,'checkpoint_root',None) is not None:
+        audit_dir = Path(llm.checkpoint_root) / 'history_audit'
         audit_dir.mkdir(parents=True, exist_ok=True)
         audit_key = sha({'history':key[0],'batch':batch,'policy':policy})
-        (audit_dir / (audit_key + '.json')).write_text(
-            jdump({'group':case.get('group',''), 'batch':batch,
-                   'policy':policy,'events':events}),encoding='utf-8')
+        checkpoint_path = audit_dir / (audit_key + '.partial.json')
+        if checkpoint_path.exists():
+            try: checkpoint_events=json.loads(checkpoint_path.read_text(encoding='utf-8')).get('events',[])
+            except (json.JSONDecodeError,OSError): checkpoint_events=[]
+            valid=0
+            for saved,ch in zip(checkpoint_events,chunks(case['turns'],batch)):
+                if saved.get('chunk_turn_ids') != [t['id'] for t in ch]: break
+                valid+=1
+            checkpoint_events=checkpoint_events[:valid]
+    case_chunks=chunks(case['turns'],batch)
+    for num,ch in enumerate(case_chunks,1):
+        saved=checkpoint_events[num-1] if num <= len(checkpoint_events) else None
+        if saved is not None and policy == 'add_only':
+            valid_ids={t['id'] for t in ch}
+            fresh_rows=saved.get('decision',{}).get('fresh',[])
+            new=[]
+            for fact in fresh_rows:
+                if 'source_turn_ids' in fact:
+                    source_ids=fact.get('source_turn_ids',[])
+                else:
+                    idx=fact.get('index',0)
+                    source_ids=[ch[idx]['id']] if type(idx) is int and 0 <= idx < len(ch) else []
+                new.append({'text':fact['text'],'source_ids':[sid for sid in source_ids if sid in valid_ids],
+                            'date':ch[-1]['date']})
+            changes=apply_add_only(mems,new,ch)
+            decision=saved.get('decision',{})
+        else:
+            new=extract(llm,ch,meter)
+            changes=update(llm,policy,mems,new,ch,meter,topk)
+            decision=changes.pop('trace')
+            event={'chunk_turn_ids':[t['id'] for t in ch],'date':ch[-1]['date'],'decision':decision}
+            if saved is not None: checkpoint_events=checkpoint_events[:num-1]
+            checkpoint_events.append(event)
+            if checkpoint_path:
+                temp=checkpoint_path.with_suffix('.tmp')
+                temp.write_text(jdump({'group':case.get('group',''),'batch':batch,'policy':policy,
+                                       'events':checkpoint_events}),encoding='utf-8')
+                temp.replace(checkpoint_path)
+        events.append({'chunk_turn_ids':[t['id'] for t in ch],'date':ch[-1]['date'],'decision':decision})
+        op.update(changes)
+    if checkpoint_path:
+        if policy == 'add_only' or len(events)>=len(case_chunks):
+            if checkpoint_path.exists(): checkpoint_path.unlink()
+        else:
+            temp=checkpoint_path.with_suffix('.tmp')
+            temp.write_text(jdump({'group':case.get('group',''),'batch':batch,'policy':policy,
+                                   'events':events}),encoding='utf-8')
+            temp.replace(checkpoint_path)
+    if getattr(llm,'path',None) is not None:
+        audit_dir = llm.path.parent / 'history_audit'; audit_dir.mkdir(parents=True, exist_ok=True)
+        audit_key = sha({'history':key[0],'batch':batch,'policy':policy})
+        (audit_dir / (audit_key + '.json')).write_text(jdump({'group':case.get('group',''),
+            'batch':batch,'policy':policy,'events':events}),encoding='utf-8')
     deltas = {k: meter[k]-before[k] for k in before}
     cache[key] = ([x.copy() for x in mems], deltas, dict(op))
     return mems, dict(op)
@@ -429,9 +492,24 @@ def write_csv(path, records):
 
 def evaluate(llm, selected_cases, stage, arms, state_cache, answer_topk, update_topk, out_file):
     rows = []
-    with open(out_file, 'w', encoding='utf-8') as f:
+    completed_arms = collections.defaultdict(set)
+    if Path(out_file).exists() and Path(out_file).stat().st_size:
+        with Path(out_file).open(encoding='utf-8') as existing:
+            for line in existing:
+                try:
+                    row = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if row.get('stage') == stage and row.get('case_id') in {c['id'] for c in selected_cases}:
+                    completed_arms[row['case_id']].add(row['arm'])
+                    rows.append(row)
+        print(f'[{stage}] resume: {sum(len(v) for v in completed_arms.values())} arm rows found', flush=True)
+    mode = 'a' if Path(out_file).exists() and Path(out_file).stat().st_size else 'w'
+    with open(out_file, mode, encoding='utf-8') as f:
         for num, case in enumerate(selected_cases, 1):
             for arm, batch, policy in arms:
+                if arm in completed_arms[case['id']]:
+                    continue
                 meter = new_meter()
                 mems, stats = make_history(llm, case, batch, policy, meter, state_cache, update_topk)
                 res = answer(llm, case, mems, meter, answer_topk)
@@ -444,6 +522,7 @@ def evaluate(llm, selected_cases, stage, arms, state_cache, answer_topk, update_
                        **{key:stats.get(key, 0) for key in ['added','deleted','skipped','invalid_indices']}}
                 f.write(jdump(row) + '\n'); f.flush()
                 rows.append(row)
+                completed_arms[case['id']].add(arm)
             print(f'[{stage}] {num}/{len(selected_cases)}  {case["id"]}', flush=True)
     return rows
 
@@ -477,6 +556,15 @@ def main():
     p.add_argument('--model',default='gpt-6-luna')
     p.add_argument('--data-dir',default='data')
     p.add_argument('--output-dir',default='results')
+    p.add_argument('--exp2-n', type=int, default=80,
+                   help='Number of held-out cases to evaluate in exp2 (up to all available cases)')
+    p.add_argument('--exp2-outdir',default=None,
+                   help='Directory for an independent exploratory exp2 run')
+    p.add_argument('--exp2-order', choices=('manifest','interleave'), default='manifest',
+                   help='Evaluation order; interleave datasets to avoid long runs starting with only LoCoMo')
+    p.add_argument('--exp2-order-start', choices=('locomo','longmemeval'), default='locomo',
+                   help='First dataset when --exp2-order interleave is used')
+    p.add_argument('--exp2-only',action='store_true', help='Skip exp1 and reuse its existing results')
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--topk',type=int,default=8)
     p.add_argument('--update-topk',type=int,default=12)
@@ -487,6 +575,9 @@ def main():
     args = p.parse_args()
     data_dir = Path(args.data_dir); data_dir.mkdir(parents=True,exist_ok=True)
     out = Path(args.output_dir); out.mkdir(parents=True,exist_ok=True)
+    exp2_out = Path(args.exp2_outdir) if args.exp2_outdir else out
+    if not exp2_out.is_absolute(): exp2_out = (Path.cwd()/exp2_out).resolve()
+    exp2_out.mkdir(parents=True,exist_ok=True)
     for name, url in DATA_URLS.items():
         dst = data_dir / (name+'.json')
         if not dst.exists():
@@ -496,16 +587,40 @@ def main():
     lo = build_locomo(json.loads((data_dir/'locomo.json').read_text(encoding='utf-8')))
     lm = build_longmemeval(json.loads((data_dir/'longmemeval.json').read_text(encoding='utf-8')))
     dev, test = sample_cases(lo,lm,args.seed)
-    if len(dev)!=20 or len(test)!=80: raise AssertionError('Exactly 100 unique selected QAs')
-    with open(out/'manifest.json','w',encoding='utf-8') as f:
-        json.dump({'seed':args.seed,'model':args.model,'dev':[c['id'] for c in dev],
+    if len(dev)!=20 or len(test)<80: raise AssertionError('Expected 20 dev cases and at least 80 held-out cases')
+    if not 1 <= args.exp2_n <= len(test):
+        raise ValueError(f'--exp2-n must be between 1 and {len(test)}')
+    if args.exp2_n > 80 and args.exp2_outdir is None:
+        raise ValueError('For exp2-n > 80, set --exp2-outdir to a separate exploratory output directory')
+    test = test[:args.exp2_n]
+    if args.exp2_order == 'interleave':
+        queues = collections.defaultdict(collections.deque)
+        for case in test: queues[case['dataset']].append(case)
+        names = ['locomo', 'longmemeval']
+        if args.exp2_order_start == 'longmemeval': names.reverse()
+        names = [name for name in names if queues[name]]
+        interleaved = []
+        while any(queues[name] for name in names):
+            for name in names:
+                if queues[name]: interleaved.append(queues[name].popleft())
+        test = interleaved
+    exp2_path = exp2_out/'exp2_test.jsonl'
+    manifest_path = exp2_out/'manifest.json' if exp2_out == out else exp2_out/'exp2_test.manifest.json'
+    with open(manifest_path,'w',encoding='utf-8') as f:
+        json.dump({'seed':args.seed,'model':args.model,'exp2_order':args.exp2_order,
+                   'exp2_order_start':args.exp2_order_start,'dev':[c['id'] for c in dev],
                    'test':[c['id'] for c in test], 'data_sources':DATA_URLS},f,ensure_ascii=False,indent=2)
-    llm = LLM(args.model, out/'api_cache',args.input_price,args.output_price,args.offline)
+    cache_root = exp2_out/'api_cache' if args.exp2_outdir else out/'api_cache'
+    llm = LLM(args.model, cache_root,args.input_price,args.output_price,args.offline)
     llm.cached_price = args.cached_input_price
     state_cache = {}
     # Exp 1: exact same storage policy (no semantic dedup/delete), QA recall and model cost.
-    one_rows = evaluate(llm,dev,'exp1', [('turn_1',1,'add_only'), ('turn_5',5,'add_only')],
-                        state_cache,args.topk,args.update_topk,out/'exp1_dev.jsonl')
+    if args.exp2_only and (out/'exp1_dev.jsonl').exists():
+        one_rows = [json.loads(line) for line in (out/'exp1_dev.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
+        one_rows = [row for row in one_rows if row.get('stage') == 'exp1']
+    else:
+        one_rows = evaluate(llm,dev,'exp1', [('turn_1',1,'add_only'), ('turn_5',5,'add_only')],
+                            state_cache,args.topk,args.update_topk,out/'exp1_dev.jsonl')
     s = summarize(one_rows)
     dev_agg = {r['arm']:r for r in s if r['dataset']=='OVERALL'}
     # Pre-registered selection: QA accuracy, then token-F1, then fewer calls.
@@ -515,11 +630,11 @@ def main():
     print('Exp1 winner on dev (not test):',best,flush=True)
     arms = [('joint',win_batch,'joint'),('sequential',win_batch,'sequential'),
             ('delete_only',win_batch,'delete_only'),('add_only',win_batch,'add_only')]
-    two_rows = evaluate(llm,test,'exp2',arms,state_cache,args.topk,args.update_topk,out/'exp2_test.jsonl')
+    two_rows = evaluate(llm,test,'exp2',arms,state_cache,args.topk,args.update_topk,exp2_path)
     agg = summarize(one_rows+two_rows)
-    write_csv(out/'summary.csv', agg)
+    if exp2_out == out: write_csv(out/'summary.csv', agg)
     report = {'winner_exp1_on_dev':best, 'batch_used_exp2':win_batch,
-              'total_unique_questions':100, 'exp1_dev_n':20, 'exp2_heldout_n':80,
+              'total_unique_questions':len(dev)+len(test), 'exp1_dev_n':len(dev), 'exp2_heldout_n':len(test),
               'physical_api_calls':llm.actual_api_calls,
               'pairs': [bootstrap_ci_delta(two_rows, a, 'add_only',args.seed)
                         for a in ['joint','sequential','delete_only']],
@@ -528,8 +643,8 @@ def main():
                        'Model-judged QA correctness is not an independent human assessment.',
                        'LoCoMo has 10 base dialogues: QAs within a dialogue are correlated.',
                        'LongMemEval oracle uses only evidence sessions, not full noisy histories.']}
-    (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    (exp2_out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,indent=2,ensure_ascii=False))
-    print('Summary:',out/'summary.csv')
+    print('Summary:',out/'summary.csv' if exp2_out == out else 'not updated for exploratory output')
 
 if __name__=='__main__': main()

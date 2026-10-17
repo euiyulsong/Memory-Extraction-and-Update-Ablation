@@ -65,6 +65,14 @@ python memory_benchmark.py --model gpt-6-luna \
 
 ## 다음 단계
 
+## exp2 중단 진단 및 수정
+
+확장 실험 manifest는 200개 사례를 요청했지만 JSONL에는 10개 사례(40 arm rows)만 완료되어 있었고 모두 LoCoMo였습니다. 대화 이력을 QA마다 cold-start로 다시 처리하기 때문에 사례당 arm별 수백~천 회의 모델 호출이 필요할 수 있습니다. 로그가 없어 수동 종료/런타임 종료/API 실패 등 직접 원인은 단정할 수 없습니다. 완료된 행은 모두 네 arm을 갖고 `invalid_indices=0`이라, 현재 증거는 프롬프트 오류보다 실행 시간/규모 문제를 더 시사합니다.
+
+resume 시 완료 arm을 유지하고 미완료 arm만 돌도록 수정했습니다. `--exp2-order interleave`로 두 데이터셋 결과가 장시간 실행 초기에 모두 생기게 했습니다. 상세 기록은 [`results/exp2_200_run/diagnosis.md`](results/exp2_200_run/diagnosis.md) 참조. 실제 exp2 재실행 결과는 아직 없습니다.
+
+## 다음 단계
+
 1. 동일 seed/조건으로 Exp 2의 held-out 80개 QA에서 네 업데이트 정책을 실행.
 2. `summary.csv`, `report.json`의 paired cluster-bootstrap CI를 검토하고 결과를 추가.
 3. 대표 오류를 수동 검토하고, LongMemEval full-history 및 한국어 데이터에서 검증.
