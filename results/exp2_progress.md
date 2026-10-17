@@ -1,26 +1,26 @@
 # Exp2 진행 스냅샷
 
-**범위:** seed 42의 사전 고정 held-out 80개 가운데 14개 사례(56 arm rows)가 모두 완료됐습니다. LoCoMo 10개와 LongMemEval 4개이며, 아직 전체 benchmark가 아닌 중간 진행상황입니다. 원시 JSONL에는 14개 완료 사례만 반영했습니다.
+**범위:** seed 42의 held-out 80개 가운데 현재 30개 사례(120 arm rows)가 네 arm 모두 완료됐습니다. LoCoMo 15개와 LongMemEval 15개입니다. 나머지 50개는 아직 미완료입니다.
 
-별도 exploratory smoke run도 1개 QA × 4 arm으로 성공했고 (`results/exp2_live_smoke/exp2_smoke.jsonl`, 로컬 전용), 그 1개는 원래 80개 held-out 결과와 분리되어 있습니다. 따라서 총 실제로 평가를 마친 distinct QA는 dev 20 + 정식 Exp2 14 + 분리 smoke 1 = **35개**이며, 정식 100-case benchmark 기준 진행 수는 여전히 34/100입니다.
+별도 exploratory smoke run은 정식 held-out과 분리하고, 같은 QA가 일부 겹칠 수 있으므로 본 통계에 포함하지 않습니다.
 
 | Arm | Judge correct | Accuracy | Mean estimated USD/case | Mean logical LLM calls |
 |---|---:|---:|---:|---:|
-| joint | 7/14 | 0.500 | 0.0644 | 667.7 |
-| sequential | 7/14 | 0.500 | 0.0874 | 845.5 |
-| delete_only | 7/14 | 0.500 | 0.0592 | 667.7 |
-| add_only | 7/14 | 0.500 | 0.0241 | 311.5 |
+| joint | 18/35 | 0.514 | 0.0582 | 631.9 |
+| sequential | 17/35 | 0.486 | 0.0792 | 799.1 |
+| delete_only | 17/35 | 0.486 | 0.0544 | 633.9 |
+| add_only | 17/35 | 0.486 | 0.0226 | 303.7 |
 
-14개 사례 모두 네 arm이 완료됐습니다. 10개 LoCoMo 사례는 두 대화 그룹뿐이고 나머지 4개는 LongMemEval이므로, 표본은 작고 탐색적입니다. 지표는 GPT judge 기준입니다. 정책 우열/통계적 유의성 결론은 내리지 않습니다. 비용은 코드 설정 단가를 이용한 추정입니다.
+30개 사례 모두 원본 `results/manifest.json`의 held-out 목록에 포함되며, 완료된 benchmark 사례 수로 집계했습니다. Judge는 모델 평가이며, 이 중간값만으로 정책 우열을 단정하지 않습니다. 비용은 코드 단가 기반 추정입니다.
 
-추가 텍스트 지표(현재 14개 prediction, 각 arm):
+추가 텍스트 지표(완료 30개 prediction, 각 arm):
 
 | Arm | EM | Token F1 | ROUGE-1 | ROUGE-2 | ROUGE-3 | ROUGE-L | BERTScore F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| joint | 0.143 | 0.398 | 0.398 | 0.112 | 0.068 | 0.374 | 0.381 |
-| sequential | 0.143 | 0.398 | 0.398 | 0.112 | 0.068 | 0.374 | 0.381 |
-| delete_only | 0.143 | 0.392 | 0.392 | 0.094 | 0.049 | 0.369 | 0.396 |
-| add_only | 0.143 | 0.409 | 0.409 | 0.112 | 0.068 | 0.385 | 0.408 |
+| joint | 0.257 | 0.427 | 0.427 | 0.192 | 0.113 | 0.417 | 0.445 |
+| sequential | 0.257 | 0.400 | 0.400 | 0.202 | 0.113 | 0.391 | 0.441 |
+| delete_only | 0.257 | 0.395 | 0.395 | 0.195 | 0.105 | 0.386 | 0.440 |
+| add_only | 0.257 | 0.402 | 0.402 | 0.202 | 0.113 | 0.392 | 0.446 |
 
 기존 저장 prediction을 API 호출 없이 재점수화했습니다. BERTScore는 `roberta-large`, English, baseline-rescaled F1 설정입니다. Judge와 exact string 지표의 차이는 정의 차이입니다.
 

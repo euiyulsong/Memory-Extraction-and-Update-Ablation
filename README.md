@@ -71,16 +71,16 @@ BERTScore는 `roberta-large`, English, baseline-rescaled F1 설정으로 산출�
 
 ## Exp 2 진행 결과
 
-held-out 80개 중 현재 **완료 14개 사례**(LoCoMo 10, LongMemEval 4; 네 arm 모두 각 14행)입니다. GPT judge 기준 네 arm 모두 7/14 (50.0%) 정답으로 같습니다. 별도 1-case exploratory smoke도 실행됐지만 benchmark 결과에서는 분리해 둡니다. 작은 중간 진행분이므로 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다.
+held-out 80개 중 현재 **완료 30개 사례**(LoCoMo 15, LongMemEval 15; 네 arm 모두 각 30행)입니다. GPT judge 정답은 joint 18/35, 나머지 arm 각 17/35입니다. 별도 exploratory smoke는 benchmark 결과에서 제외했습니다. 작은 중간 진행분이므로 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
 |---|---:|---:|---:|
-| joint | 7/14 | 0.0608 | 625.3 |
-| sequential | 7/14 | 0.0827 | 791.6 |
-| delete_only | 7/14 | 0.0555 | 625.3 |
-| add_only | 7/14 | 0.0224 | 288.7 |
+| joint | 18/35 | 0.0582 | 631.9 |
+| sequential | 17/35 | 0.0792 | 799.1 |
+| delete_only | 17/35 | 0.0544 | 633.9 |
+| add_only | 17/35 | 0.0226 | 303.7 |
 
-14개 사례의 EM, F1, ROUGE-1/2/3/L 및 BERTScore는 진행표에 기재했습니다. BERTScore는 `roberta-large` baseline-rescaled F1입니다. 저장된 답변은 `--score-existing`로 API 호출 없이 다시 점수화할 수 있습니다.
+30개 사례의 EM, F1, ROUGE-1/2/3/L 및 BERTScore는 진행표에 기재했습니다. BERTScore는 `roberta-large` baseline-rescaled F1입니다. 저장된 답변은 `--score-existing`로 API 호출 없이 다시 점수화할 수 있습니다.
 
 평균 비용은 코드의 모델 단가 추정값이며 실제 청구액과 다를 수 있습니다. 기존 Exp2 결과 JSONL과 탐색용 200개 파일은 코드/캐시와 구분해 아직 Git에 포함하지 않았습니다.
 
