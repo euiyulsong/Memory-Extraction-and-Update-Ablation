@@ -65,14 +65,14 @@ python memory_benchmark.py --model gpt-6-luna \
 
 ## Exp 2 진행 결과
 
-held-out 80개 중 현재 **완료 10개 사례**(LoCoMo 10/10, 각 arm 결과 10개; LongMemEval은 아직 없음)입니다. 11번째 사례에는 `joint`, `sequential`만 기록됐고 나머지 arm은 미완료입니다. 공정한 paired 비교에서 이 사례를 제외하면 네 arm 모두 동일 정답 5/10 (50%)입니다. 이 작은 진행분은 LoCoMo 대화 두 개에만 걸쳐 있어 정책 우열로 해석하면 안 됩니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 전체 JSONL은 80개가 완료된 뒤 추가합니다.
+held-out 80개 중 현재 **완료 12개 사례**(LoCoMo 10, LongMemEval 2; 네 arm 모두 각 12행)입니다. GPT judge 기준 네 arm 모두 5/12 (41.7%) 정답으로 동일합니다. 단, 이는 작은 중간 진행분이며 LoCoMo 사례도 두 대화 그룹에만 있어 정책 우열로 해석하지 않습니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 원시 JSONL은 80개가 완료된 뒤 추가합니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
 |---|---:|---:|---:|
-| joint | 5/10 paired | 0.0817 | 850.0 |
-| sequential | 5/10 | 0.1112 | 1,077.0 |
-| delete_only | 5/10 | 0.0751 | 850.0 |
-| add_only | 5/10 | 0.0303 | 396.0 |
+| joint | 5/12 | 0.0690 | 717.0 |
+| sequential | 5/12 | 0.0938 | 908.3 |
+| delete_only | 5/12 | 0.0635 | 717.0 |
+| add_only | 5/12 | 0.0257 | 334.3 |
 
 평균 비용은 코드의 모델 단가 추정값이며 실제 청구액과 다를 수 있습니다. 기존 Exp2 결과 JSONL과 탐색용 200개 파일은 코드/캐시와 구분해 아직 Git에 포함하지 않았습니다.
 
