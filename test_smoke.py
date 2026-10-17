@@ -82,7 +82,7 @@ class BenchmarkTests(unittest.TestCase):
         case={'id':'locomo:test:1','dataset':'locomo','group':'locomo:test',
               'turns':turns, 'question':'fact?', 'type':'2'}
         with tempfile.TemporaryDirectory() as tmp:
-            llm=CacheCountingStub(); llm.path=Path(tmp); llm.checkpoint_root=Path(tmp)
+            llm=CacheCountingStub(); llm.path=Path(tmp)
             audit=Path(tmp)/'history_audit'; audit.mkdir()
             from memory_benchmark import sha
             checkpoint=audit/(sha({'history':sha(turns),'batch':1,'policy':'add_only'})+'.partial.json')
@@ -96,8 +96,9 @@ class BenchmarkTests(unittest.TestCase):
             memories,_=make_history(llm,case,1,'add_only',meter,{},8)
             self.assertEqual(len(memories),120)
             self.assertEqual(meter['cache_hits'],0)
-            self.assertEqual(meter['cache_misses'],80)
-            self.assertFalse(checkpoint.exists())
+            self.assertEqual(meter['cache_misses'],120)
+            self.assertTrue(checkpoint.exists())
+            self.assertEqual(len(json.loads(checkpoint.read_text())['events']),40)
 
     def test_loaders_and_group_split(self):
         conversations=[]

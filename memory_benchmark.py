@@ -368,7 +368,7 @@ def make_history(llm, case, batch, policy, meter, cache, topk):
     events = []
     checkpoint_path = None
     checkpoint_events = []
-    if case.get('dataset') == 'locomo' and getattr(llm,'checkpoint_root',None) is not None:
+    if case.get('dataset') == 'locomo' and getattr(llm,'checkpoint_root',None) is not None and policy != 'add_only':
         audit_dir = Path(llm.checkpoint_root) / 'history_audit'
         audit_dir.mkdir(parents=True, exist_ok=True)
         audit_key = sha({'history':key[0],'batch':batch,'policy':policy})
@@ -565,6 +565,8 @@ def main():
     p.add_argument('--exp2-order-start', choices=('locomo','longmemeval'), default='locomo',
                    help='First dataset when --exp2-order interleave is used')
     p.add_argument('--exp2-only',action='store_true', help='Skip exp1 and reuse its existing results')
+    p.add_argument('--fresh-exp2-output',default=None,
+                   help='Write this exp2 run to a new JSONL path, preserving previous partial files')
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--topk',type=int,default=8)
     p.add_argument('--update-topk',type=int,default=12)
@@ -604,18 +606,23 @@ def main():
             for name in names:
                 if queues[name]: interleaved.append(queues[name].popleft())
         test = interleaved
-    exp2_path = exp2_out/'exp2_test.jsonl'
+    exp2_path = Path(args.fresh_exp2_output).resolve() if getattr(args,'fresh_exp2_output',None) else exp2_out/'exp2_test.jsonl'
     manifest_path = exp2_out/'manifest.json' if exp2_out == out else exp2_out/'exp2_test.manifest.json'
+    if getattr(args,'fresh_exp2_output',None): manifest_path=Path(args.fresh_exp2_output).with_suffix('.manifest.json')
     with open(manifest_path,'w',encoding='utf-8') as f:
         json.dump({'seed':args.seed,'model':args.model,'exp2_order':args.exp2_order,
                    'exp2_order_start':args.exp2_order_start,'dev':[c['id'] for c in dev],
                    'test':[c['id'] for c in test], 'data_sources':DATA_URLS},f,ensure_ascii=False,indent=2)
     cache_root = exp2_out/'api_cache' if args.exp2_outdir else out/'api_cache'
     llm = LLM(args.model, cache_root,args.input_price,args.output_price,args.offline)
+    if args.exp2_outdir and not args.offline:
+        llm.checkpoint_root = exp2_out
     llm.cached_price = args.cached_input_price
     state_cache = {}
     # Exp 1: exact same storage policy (no semantic dedup/delete), QA recall and model cost.
-    if args.exp2_only and (out/'exp1_dev.jsonl').exists():
+    if args.exp2_only and not (out/'exp1_dev.jsonl').exists():
+        raise FileNotFoundError(f'--exp2-only requested, but {(out/"exp1_dev.jsonl")} is missing')
+    if (args.exp2_only or args.exp2_outdir or getattr(args,'fresh_exp2_output',None)) and (out/'exp1_dev.jsonl').exists():
         one_rows = [json.loads(line) for line in (out/'exp1_dev.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
         one_rows = [row for row in one_rows if row.get('stage') == 'exp1']
     else:
@@ -643,7 +650,9 @@ def main():
                        'Model-judged QA correctness is not an independent human assessment.',
                        'LoCoMo has 10 base dialogues: QAs within a dialogue are correlated.',
                        'LongMemEval oracle uses only evidence sessions, not full noisy histories.']}
-    (exp2_out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    report_path=exp2_out/'report.json'
+    if getattr(args,'fresh_exp2_output',None): report_path=Path(args.fresh_exp2_output).with_suffix('.report.json')
+    report_path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,indent=2,ensure_ascii=False))
     print('Summary:',out/'summary.csv' if exp2_out == out else 'not updated for exploratory output')
 
