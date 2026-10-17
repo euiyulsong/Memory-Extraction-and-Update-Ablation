@@ -65,7 +65,7 @@ python memory_benchmark.py --model gpt-6-luna \
 
 ## Exp 2 진행 결과
 
-held-out 80개 중 현재 **완료 10개 사례**(LoCoMo 10/10, 각 arm 결과 10개; LongMemEval은 아직 없음)입니다. 추가로 11번째 사례의 `joint` row 하나가 기록됐지만 해당 사례의 나머지 arm 결과는 없습니다. 공정한 paired 비교를 위해 이 불완전 사례를 제외하면 네 arm 모두 동일 정답 5/10 (50%)입니다. 이 작은 진행분은 LoCoMo 대화 두 개에만 걸쳐 있어 정책 우열로 해석하면 안 됩니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 전체 JSONL은 80개가 완료된 뒤 추가합니다.
+held-out 80개 중 현재 **완료 10개 사례**(LoCoMo 10/10, 각 arm 결과 10개; LongMemEval은 아직 없음)입니다. 11번째 사례에는 `joint`, `sequential`만 기록됐고 나머지 arm은 미완료입니다. 공정한 paired 비교에서 이 사례를 제외하면 네 arm 모두 동일 정답 5/10 (50%)입니다. 이 작은 진행분은 LoCoMo 대화 두 개에만 걸쳐 있어 정책 우열로 해석하면 안 됩니다. 진행 요약은 [`results/exp2_progress.md`](results/exp2_progress.md)에 있습니다. 전체 JSONL은 80개가 완료된 뒤 추가합니다.
 
 | Arm | Correct / n | 평균 사례당 추정비용 (USD) | 평균 논리 호출 수 |
 |---|---:|---:|---:|
