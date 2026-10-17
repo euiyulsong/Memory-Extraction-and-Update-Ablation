@@ -79,7 +79,7 @@ python3 memory_benchmark.py --model gpt-6-luna --exp2-only --exp2-n 1 \\
 
 ## 다음 단계
 
-1. 동일 seed/조건으로 Exp 2의 held-out 80개 QA에서 네 업데이트 정책을 실행.
+1. 동일 seed/조건으로 Exp 2의 held-out 80개 QA에서 네 업데이트 정책을 실행. 실행 제한에 맞춰 `--exp2-n 1 --exp2-start-index 0..79`로 나눠서 진행할 수 있으며, 같은 output JSONL을 사용해 재개합니다.
 2. `summary.csv`, `report.json`의 paired cluster-bootstrap CI를 검토하고 결과를 추가.
 3. 대표 오류를 수동 검토하고, LongMemEval full-history 및 한국어 데이터에서 검증.
 

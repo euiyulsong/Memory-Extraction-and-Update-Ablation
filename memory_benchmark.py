@@ -567,6 +567,8 @@ def main():
     p.add_argument('--exp2-only',action='store_true', help='Skip exp1 and reuse its existing results')
     p.add_argument('--fresh-exp2-output',default=None,
                    help='Write this exp2 run to a new JSONL path, preserving previous partial files')
+    p.add_argument('--exp2-start-index', type=int, default=0,
+                   help='Start index in the held-out manifest after ordering (for staged runs)')
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--topk',type=int,default=8)
     p.add_argument('--update-topk',type=int,default=12)
@@ -595,6 +597,7 @@ def main():
     if args.exp2_n > 80 and args.exp2_outdir is None:
         raise ValueError('For exp2-n > 80, set --exp2-outdir to a separate exploratory output directory')
     test = test[:args.exp2_n]
+    ordered_test = list(test)
     if args.exp2_order == 'interleave':
         queues = collections.defaultdict(collections.deque)
         for case in test: queues[case['dataset']].append(case)
@@ -606,13 +609,19 @@ def main():
             for name in names:
                 if queues[name]: interleaved.append(queues[name].popleft())
         test = interleaved
+    if args.exp2_start_index < 0 or args.exp2_start_index >= len(ordered_test):
+        raise ValueError(f'--exp2-start-index must be between 0 and {len(ordered_test)-1}')
+    test = ordered_test[args.exp2_start_index:args.exp2_start_index+args.exp2_n]
     exp2_path = Path(args.fresh_exp2_output).resolve() if getattr(args,'fresh_exp2_output',None) else exp2_out/'exp2_test.jsonl'
     manifest_path = exp2_out/'manifest.json' if exp2_out == out else exp2_out/'exp2_test.manifest.json'
     if getattr(args,'fresh_exp2_output',None): manifest_path=Path(args.fresh_exp2_output).with_suffix('.manifest.json')
     with open(manifest_path,'w',encoding='utf-8') as f:
         json.dump({'seed':args.seed,'model':args.model,'exp2_order':args.exp2_order,
                    'exp2_order_start':args.exp2_order_start,'dev':[c['id'] for c in dev],
-                   'test':[c['id'] for c in test], 'data_sources':DATA_URLS},f,ensure_ascii=False,indent=2)
+                   'test':[c['id'] for c in ordered_test],
+                   'test_batch':[c['id'] for c in test],
+                   'exp2_start_index':args.exp2_start_index,
+                   'data_sources':DATA_URLS},f,ensure_ascii=False,indent=2)
     cache_root = exp2_out/'api_cache' if args.exp2_outdir else out/'api_cache'
     llm = LLM(args.model, cache_root,args.input_price,args.output_price,args.offline)
     if args.exp2_outdir and not args.offline:
