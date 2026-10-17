@@ -596,7 +596,7 @@ def main():
         raise ValueError(f'--exp2-n must be between 1 and {len(test)}')
     if args.exp2_n > 80 and args.exp2_outdir is None:
         raise ValueError('For exp2-n > 80, set --exp2-outdir to a separate exploratory output directory')
-    test = test[:args.exp2_n]
+    test = list(test)
     ordered_test = list(test)
     if args.exp2_order == 'interleave':
         queues = collections.defaultdict(collections.deque)

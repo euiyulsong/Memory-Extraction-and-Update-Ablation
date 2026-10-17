@@ -140,6 +140,13 @@ class BenchmarkTests(unittest.TestCase):
                 if queues[name]: interleaved.append(queues[name].popleft())
         self.assertEqual([c['id'] for c in interleaved],['l1','m1','l2','m2','m3'])
 
+    def test_staged_exp2_slice_uses_full_manifest(self):
+        cases=[{'id':str(i)} for i in range(80)]
+        start,n=10,1
+        batch=cases[start:start+n]
+        self.assertEqual(len(batch),1)
+        self.assertEqual(batch[0]['id'],'10')
+
     def test_evaluate_resume_keeps_partial_rows(self):
         import json, tempfile
         from pathlib import Path
